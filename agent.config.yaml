@@ -1,0 +1,37 @@
+# ===================================
+# ローカルAIコーディングエージェント設定
+# ===================================
+
+# --- LLM設定 ---
+# providerをここで切り替えるだけでLLMが変わります
+llm:
+  provider: ollama        # ollama / gemini / openai
+  model: qwen3:4b         # プロバイダーごとのモデル名
+  num_thread: 4           # Ollama専用：使用するCPUスレッド数
+
+  # Gemini / OpenAI を使う場合はapi_keyを設定（または環境変数で指定）
+  # api_key: "your-api-key-here"
+
+  # 【Geminiに切り替える場合の例】
+  # provider: gemini
+  # model: gemini-2.0-flash
+  # api_key: "your-google-api-key"
+
+  # 【OpenAIに切り替える場合の例】
+  # provider: openai
+  # model: gpt-4o
+  # api_key: "your-openai-api-key"
+
+# --- プロジェクト設定 ---
+project_root: ./
+timeout_sec: 60
+auto_commit: false
+
+# --- Human-in-the-Loop設定 ---
+human_approval:
+  after_architect: true
+  after_security_high: true
+  after_tests_pass: true
+
+# --- Ollama設定 ---
+ollama_url: http://localhost:11434

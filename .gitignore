@@ -1,0 +1,8 @@
+__pycache__/
+venv/
+
+output/
+proposals/
+
+__init__.py
+.agent_state.yaml
