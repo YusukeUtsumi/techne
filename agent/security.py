@@ -227,7 +227,7 @@ def llm_security_review(code_text: str, static_issues: list[dict]) -> list[dict]
         static_summary = "\n[静的解析ツールの検出結果]\n"
         for issue in static_issues:
             static_summary += (
-                f"- [{issue['severity']}] {issue['title']} "
+                f"- [{issue['severity']}] {issue.get('title', '（タイトルなし）')} "
                 f"({issue['file']}:{issue['line']}) [{issue['source']}]\n"
             )
     else:
@@ -313,7 +313,7 @@ def generate_report(
     if classified[SEVERITY_HIGH]:
         report += "## 🔴 HIGH（要対応）\n\n"
         for i, issue in enumerate(classified[SEVERITY_HIGH], 1):
-            report += f"### {i}. {issue['title']}\n"
+            report += f"### {i}. {issue.get('title', '（タイトルなし）')}\n"
             if issue.get("file"):
                 report += f"- **ファイル**: {issue['file']}"
                 if issue.get("line"):
@@ -326,7 +326,7 @@ def generate_report(
     if classified[SEVERITY_MEDIUM]:
         report += "## 🟡 MEDIUM（推奨対応）\n\n"
         for i, issue in enumerate(classified[SEVERITY_MEDIUM], 1):
-            report += f"### {i}. {issue['title']}\n"
+            report += f"### {i}. {issue.get('title', '（タイトルなし）')}\n"
             if issue.get("file"):
                 report += f"- **ファイル**: {issue['file']}"
                 if issue.get("line"):
@@ -339,7 +339,7 @@ def generate_report(
     if classified[SEVERITY_LOW]:
         report += "## 🟢 LOW（任意対応）\n\n"
         for i, issue in enumerate(classified[SEVERITY_LOW], 1):
-            report += f"### {i}. {issue['title']}\n"
+            report += f"### {i}. {issue.get('title', '（タイトルなし）')}\n"
             if issue.get("file"):
                 report += f"- **ファイル**: {issue['file']}"
                 if issue.get("line"):

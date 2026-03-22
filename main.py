@@ -28,6 +28,9 @@ def run(task):
         "security_issues": None,
         "security_classified": None,
         "security_report_file": None,
+        "test_code": None,
+        "test_results": None,
+        "test_report_file": None,
     }
 
     click.echo("\n🏗️  Architect が設計案を生成中...\n")
@@ -311,6 +314,9 @@ FastAPIバックエンド + SQLiteデータベース + 静的フロントエン�
         "security_issues": None,
         "security_classified": None,
         "security_report_file": None,
+        "test_code": None,
+        "test_results": None,
+        "test_report_file": None,
     }
 
     import os

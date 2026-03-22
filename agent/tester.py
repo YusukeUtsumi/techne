@@ -80,6 +80,7 @@ def build_test_prompt(files: dict[str, str], language: str) -> str:
         framework = "pytest"
         test_file = "tests/test_main.py"
         example = (
+            "必ず以下の形式で出力してください：\n"
             "```python:tests/test_main.py\n"
             "import pytest\n"
             "from fastapi.testclient import TestClient\n"
@@ -88,7 +89,8 @@ def build_test_prompt(files: dict[str, str], language: str) -> str:
             "def test_get_items():\n"
             "    response = client.get('/items')\n"
             "    assert response.status_code == 200\n"
-            "```"
+            "```\n\n"
+            "ファイルパスを必ず含めてください。```python だけではなく ```python:tests/test_main.py の形式で出力すること。"
         )
     else:
         framework = "jest"

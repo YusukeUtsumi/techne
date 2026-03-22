@@ -28,6 +28,8 @@ def extract_code_blocks(text: str) -> list[dict]:
     # 形式1: ```言語:ファイルパス
     pattern1 = r"```(\w+):([^\n]+)\n(.*?)```"
     for lang, filepath, code in re.findall(pattern1, text, re.DOTALL):
+        filepath = filepath.strip()
+        filepath = re.sub(r'^\d+\.\s*', '', filepath)
         blocks.append({
             "language": lang.strip(),
             "filepath": filepath.strip(),
@@ -41,6 +43,7 @@ def extract_code_blocks(text: str) -> list[dict]:
     pattern2 = r"(?:\*\*([^*\n]+\.\w+)\*\*|^#{1,3}\s+([^\n]+\.\w+))\s*\n```(\w*)\n(.*?)```"
     for m in re.finditer(pattern2, text, re.DOTALL | re.MULTILINE):
         filepath = (m.group(1) or m.group(2)).strip()
+        filepath = re.sub(r'^\d+\.\s*', '', filepath)
         lang = m.group(3).strip() or "text"
         code = m.group(4).strip()
         if len(filepath) < 60 and ("." in filepath):

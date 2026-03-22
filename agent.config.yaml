@@ -6,16 +6,15 @@
 # providerをここで切り替えるだけでLLMが変わります
 llm:
   provider: ollama        # ollama / gemini / openai
-  model: qwen3:4b         # プロバイダーごとのモデル名
+  model: phi3:mini   #qwen3:4b         # プロバイダーごとのモデル名
   num_thread: 4           # Ollama専用：使用するCPUスレッド数
 
   # Gemini / OpenAI を使う場合はapi_keyを設定（または環境変数で指定）
   # api_key: "your-api-key-here"
 
   # 【Geminiに切り替える場合の例】
-  # provider: gemini
-  # model: gemini-2.0-flash
-  # api_key: "your-google-api-key"
+  #provider: gemini
+  #model: gemini-2.0-flash
 
   # 【OpenAIに切り替える場合の例】
   # provider: openai
