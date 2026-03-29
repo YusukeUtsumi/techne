@@ -82,7 +82,7 @@ def approve():
     click.echo("=" * 60)
 
     # セキュリティ結果の表示
-    status = result.get("status", "")
+    security_status = result.get("status", "")
     report_file = result.get("security_report_file", "")
     classified = result.get("security_classified") or {}
     high = len(classified.get("HIGH", []))
@@ -90,7 +90,7 @@ def approve():
     low = len(classified.get("LOW", []))
 
     click.echo("\n" + "=" * 60)
-    if status == "security_high":
+    if security_status == "security_high":
         click.echo(f"🔴 セキュリティ検査: HIGH={high} / MEDIUM={medium} / LOW={low}")
         click.echo(f"⚠️  HIGH問題が検出されました。レポートを確認してください。")
         if report_file:
@@ -104,6 +104,8 @@ def approve():
     click.echo("=" * 60)
 
     # テスト結果の表示
+    # バグ修正：security_status と別変数にしないと security_high 時に
+    # test_status が "security_high" になり、テスト結果が常に非表示になっていた
     test_status = result.get("status", "")
     test_report = result.get("test_report_file", "")
     test_results = result.get("test_results") or {}

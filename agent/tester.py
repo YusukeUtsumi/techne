@@ -41,6 +41,10 @@ def collect_code(output_dir: str) -> dict[str, str]:
     extensions = (".py", ".js", ".ts", ".go", ".rs")
     files = {}
     for root, _, fnames in os.walk(output_dir):
+        # tests/ フォルダを除外：前回のテストファイルをソースとして誤収集しないため
+        rel_root = os.path.relpath(root, output_dir)
+        if rel_root.startswith("tests"):
+            continue
         for fname in fnames:
             if fname.endswith(extensions):
                 fpath = os.path.join(root, fname)
@@ -78,23 +82,32 @@ def build_test_prompt(files: dict[str, str], language: str) -> str:
 
     if language == "python":
         framework = "pytest"
-        test_file = "tests/test_main.py"
         example = (
-            "必ず以下の形式で出力してください：\n"
-            "```python:tests/test_main.py\n"
+            "必ず以下の2ファイルをこの形式で出力してください：\n\n"
+            "**ファイル1: tests/conftest.py** (clientフィクスチャの定義)\n"
+            "```python:tests/conftest.py\n"
             "import pytest\n"
             "from fastapi.testclient import TestClient\n"
             "from app.main import app\n\n"
-            "client = TestClient(app)\n\n"
-            "def test_get_items():\n"
+            "@pytest.fixture\n"
+            "def client():\n"
+            "    with TestClient(app) as c:\n"
+            "        yield c\n"
+            "```\n\n"
+            "**ファイル2: tests/test_main.py** (テストケース)\n"
+            "```python:tests/test_main.py\n"
+            "def test_get_items(client):\n"
             "    response = client.get('/items')\n"
             "    assert response.status_code == 200\n"
             "```\n\n"
-            "ファイルパスを必ず含めてください。```python だけではなく ```python:tests/test_main.py の形式で出力すること。"
+            "【絶対に守ること】\n"
+            "- conftest.py に @pytest.fixture で client を定義すること\n"
+            "- test_main.py では client をフィクスチャ引数として受け取ること（グローバル変数にしない）\n"
+            "- TestClient をグローバルに生成しないこと\n"
+            "- ファイルパスは必ず ```python:tests/conftest.py の形式で明記すること"
         )
     else:
         framework = "jest"
-        test_file = "tests/main.test.js"
         example = (
             "```javascript:tests/main.test.js\n"
             "const request = require('supertest');\n"
@@ -119,7 +132,6 @@ def build_test_prompt(files: dict[str, str], language: str) -> str:
 - テストデータはテスト内で完結させること
 
 [出力形式]
-以下の形式で出力してください：
 {example}
 
 【重要】日本語でコメントを記述してください。
@@ -128,7 +140,14 @@ def build_test_prompt(files: dict[str, str], language: str) -> str:
 
 
 def extract_test_blocks(text: str) -> list[dict]:
-    """テストコードブロックを抽出する（coder.pyと同じロジック）"""
+    """
+    テストコードブロックを抽出する
+    以下の4パターンに対応：
+    1. ```python:tests/test_main.py （理想形式）
+    2. **tests/test_main.py** の直後のコードブロック
+    3. # tests/test_main.py のコメント行を含むコードブロック（phi3等が出力する形式）
+    4. いずれも抽出できない場合はブロック全体をtest_main.pyとして保存
+    """
     blocks = []
 
     # 形式1: ```言語:ファイルパス
@@ -140,8 +159,11 @@ def extract_test_blocks(text: str) -> list[dict]:
             "code": code.strip()
         })
 
+    # tests/ 配下のみ採用し、conftest.py と test_main.py だけに絞る
+    ALLOWED_FILES = {"tests/conftest.py", "tests/test_main.py"}
     if blocks:
-        return blocks
+        filtered = [b for b in blocks if b["filepath"] in ALLOWED_FILES]
+        return filtered if filtered else blocks[:1]
 
     # 形式2: **ファイルパス** の直後のコードブロック
     pattern2 = r"(?:\*\*([^*\n]+\.\w+)\*\*|^#{1,3}\s+([^\n]+\.\w+))\s*\n```(\w*)\n(.*?)```"
@@ -155,6 +177,42 @@ def extract_test_blocks(text: str) -> list[dict]:
                 "filepath": filepath,
                 "code": code
             })
+
+    if blocks:
+        return blocks
+
+    # 形式3: コードブロック内の先頭コメント行にパスが書かれている
+    # 例: ```python\n# tests/test_main.py\n...```
+    pattern3 = r"```(\w*)\n#\s*([^\n]+\.\w+)\n(.*?)```"
+    for m in re.finditer(pattern3, text, re.DOTALL):
+        lang = m.group(1).strip() or "python"
+        filepath = m.group(2).strip()
+        code = m.group(3).strip()
+        if len(filepath) < 60 and "." in filepath:
+            blocks.append({
+                "language": lang,
+                "filepath": filepath,
+                "code": code
+            })
+
+    if blocks:
+        return blocks
+
+    # 形式4: フォールバック - コードブロック全体を tests/test_main.py として保存
+    # テストコードらしいキーワード（import / def test_ / assert）を含むブロックのみ採用し、
+    # 説明用の短いサンプルコードが誤検出されるのを防ぐ
+    TEST_KEYWORDS = ("import", "def test_", "assert", "TestClient")
+    pattern4 = r"```(python|py)(.*?)```"
+    for m in re.finditer(pattern4, text, re.DOTALL):
+        code = m.group(2).strip()
+        is_test_code = any(kw in code for kw in TEST_KEYWORDS)
+        if len(code) > 200 and is_test_code:  # 閾値を200文字に引き上げ
+            blocks.append({
+                "language": "python",
+                "filepath": "tests/test_main.py",
+                "code": code
+            })
+            break  # 最初の1つだけ使う
 
     return blocks
 
@@ -201,13 +259,14 @@ def run_pytest(test_dir: str, output_dir: str) -> dict:
         return result
 
     try:
+        # cwd=output_dir で実行するため test_dir を相対パスに変換
+        rel_test_dir = os.path.relpath(test_dir, output_dir)
         proc = subprocess.run(
             [
                 "python", "-m", "pytest",
-                test_dir,
+                rel_test_dir,
                 "-v",
                 "--tb=short",
-                f"--rootdir={output_dir}",
             ],
             capture_output=True,
             text=True,
@@ -217,10 +276,9 @@ def run_pytest(test_dir: str, output_dir: str) -> dict:
         output = proc.stdout + proc.stderr
         result["output"] = output
 
-        # 結果をパース: "X passed, Y failed" 形式
         passed_match = re.search(r"(\d+) passed", output)
         failed_match = re.search(r"(\d+) failed", output)
-        error_match = re.search(r"(\d+) error", output)
+        error_match = re.search(r"(\d+) errors", output)
 
         result["passed"] = int(passed_match.group(1)) if passed_match else 0
         result["failed"] = int(failed_match.group(1)) if failed_match else 0
@@ -271,9 +329,11 @@ def run_jest(test_dir: str, output_dir: str) -> dict:
 
         passed_match = re.search(r"(\d+) passed", output)
         failed_match = re.search(r"(\d+) failed", output)
+        error_match = re.search(r"(\d+) errors", output)  # バグ修正：errorsのパースが抜けていた
 
         result["passed"] = int(passed_match.group(1)) if passed_match else 0
         result["failed"] = int(failed_match.group(1)) if failed_match else 0
+        result["errors"] = int(error_match.group(1)) if error_match else 0
         result["success"] = proc.returncode == 0
 
     except subprocess.TimeoutExpired:
@@ -344,7 +404,7 @@ def generate_test_report(
 ## テスト実行ログ
 
 ```
-{test_result['output'][:3000]}
+{test_result['output'][:10000]}
 ```
 """
 
@@ -406,6 +466,13 @@ def tester_agent(state: AgentState) -> AgentState:
     print(f"  抽出されたテストブロック数: {len(test_blocks)}")
 
     test_dir = os.path.join(output_dir, "tests")
+
+    # 古いテストファイルを削除してからディレクトリを再作成
+    # 前回実行時の壊れたファイルが残り続けるのを防ぐ
+    import shutil
+    if os.path.exists(test_dir):
+        shutil.rmtree(test_dir)
+        print("  🗑️  古いテストファイルをクリアしました")
     os.makedirs(test_dir, exist_ok=True)
 
     written_test_files = write_test_files(test_blocks, output_dir)
@@ -441,7 +508,15 @@ def tester_agent(state: AgentState) -> AgentState:
     return {
         **state,
         "test_code": test_code_raw,
-        "test_results": test_result,
+        "test_results": {
+            # バグ修正：output（生ログ）はYAMLの肥大化を防ぐため除外し、
+            # レポートファイル参照で代替する
+            "runner": test_result["runner"],
+            "passed": test_result["passed"],
+            "failed": test_result["failed"],
+            "errors": test_result["errors"],
+            "success": test_result["success"],
+        },
         "test_report_file": report_path,
         "status": new_status,
         "messages": state.get("messages", []) + [{

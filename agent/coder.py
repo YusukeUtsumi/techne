@@ -2,6 +2,7 @@ from .state import AgentState
 from .llm import get_llm
 import os
 import re
+import subprocess
 
 llm = get_llm()
 
@@ -25,14 +26,31 @@ def extract_code_blocks(text: str) -> list[dict]:
     """
     blocks = []
 
+    def clean_filepath(fp: str) -> str:
+        fp = fp.strip()
+        fp = re.sub(r'^\d+\.\s*', '', fp)
+        fp = re.sub(r'\s*\(.*?\)', '', fp)
+        fp = re.sub(r'\s*#.*$', '', fp)
+        return fp.strip()
+
+    def is_valid_filepath(fp: str) -> bool:
+        if not fp or len(fp) > 60:
+            return False
+        if '.' not in fp:
+            return False
+        if ' ' in fp:
+            return False
+        return True
+
     # 形式1: ```言語:ファイルパス
     pattern1 = r"```(\w+):([^\n]+)\n(.*?)```"
     for lang, filepath, code in re.findall(pattern1, text, re.DOTALL):
-        filepath = filepath.strip()
-        filepath = re.sub(r'^\d+\.\s*', '', filepath)
+        filepath = clean_filepath(filepath)
+        if not is_valid_filepath(filepath):
+            continue
         blocks.append({
             "language": lang.strip(),
-            "filepath": filepath.strip(),
+            "filepath": filepath,
             "code": code.strip()
         })
 
@@ -42,11 +60,10 @@ def extract_code_blocks(text: str) -> list[dict]:
     # 形式2 & 3: ファイルパスラベルの直後のコードブロック
     pattern2 = r"(?:\*\*([^*\n]+\.\w+)\*\*|^#{1,3}\s+([^\n]+\.\w+))\s*\n```(\w*)\n(.*?)```"
     for m in re.finditer(pattern2, text, re.DOTALL | re.MULTILINE):
-        filepath = (m.group(1) or m.group(2)).strip()
-        filepath = re.sub(r'^\d+\.\s*', '', filepath)
+        filepath = clean_filepath(m.group(1) or m.group(2))
         lang = m.group(3).strip() or "text"
         code = m.group(4).strip()
-        if len(filepath) < 60 and ("." in filepath):
+        if is_valid_filepath(filepath):
             blocks.append({
                 "language": lang,
                 "filepath": filepath,
@@ -218,6 +235,21 @@ def coder_agent(state: AgentState) -> AgentState:
 
     # --- フェーズ3：ファイル書き出し ---
     written_files = write_files(blocks, output_dir)
+
+    # --- フェーズ4：依存パッケージの自動インストール ---
+    req_path = os.path.join(output_dir, "requirements.txt")
+    if os.path.exists(req_path):
+        print("📦 requirements.txt を検出。依存パッケージをインストール中...")
+        result = subprocess.run(
+            ["pip", "install", "-r", req_path],
+            capture_output=True, text=True, check=False
+        )
+        if result.returncode == 0:
+            print("✅ パッケージのインストール完了")
+        else:
+            print(f"⚠️  インストール中に問題が発生しました:\n{result.stderr[:500]}")
+    else:
+        print("⚠️  requirements.txt が見つかりませんでした（スキップ）")
 
     # 生成内容をMarkdownで保存
     with open("proposals/coder_output.md", "w", encoding="utf-8") as f:
