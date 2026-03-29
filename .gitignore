@@ -8,4 +8,4 @@ __init__.py
 .agent_state.yaml
 .DS_Store
 
-.env
+.envvenv/
