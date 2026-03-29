@@ -10,3 +10,4 @@ __init__.py
 
 .envvenv/
 .env
+.DS_Store
